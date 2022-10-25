@@ -22,6 +22,11 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
 
+    if ((result.count("evt3") + result.count("output") + result.count("scale")) != 3) {
+        std::cerr << "Missing parameters\n";
+        return EXIT_FAILURE;
+    }
+
     std::string scale = result["scale"].as<std::string>();
     fs::path output = result["output"].as<fs::path>();
     if (!is_directory(output)) {

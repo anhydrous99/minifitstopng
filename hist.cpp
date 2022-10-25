@@ -5,16 +5,28 @@
 #include "hist.h"
 
 #include <png.h>
+#include <cmath>
 #include <iostream>
 #include <ascdm.h>
 #include <gsl/gsl_histogram2d.h>
 
-int scale_histogram(gsl_histogram2d* hist) {
+void scale_histogram(gsl_histogram2d* hist, const std::string& scale) {
     double max_val = gsl_histogram2d_max_val(hist);
-    return gsl_histogram2d_scale(hist, 255. / max_val);
+
+    if (scale == "linear")
+        gsl_histogram2d_scale(hist, 255. / max_val);
+
+    if (scale == "log") {
+        const double a = 10000.;
+        const double s1 = a / max_val;
+        const double s2 = 255. / log(a);
+        auto *bin = hist->bin;
+        for (long i = 0; i < 8192 * 8192; i++)
+            bin[i] = s2 * log1p(s1 * bin[i]);
+    }
 }
 
-void calc_histogram(const std::string& evt3_path, const std::string& output) {
+void calc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
 
     // Initialize the histogram
     gsl_histogram2d* r_hist = gsl_histogram2d_alloc(8192, 8192);
@@ -59,9 +71,9 @@ void calc_histogram(const std::string& evt3_path, const std::string& output) {
     dmBlockClose(regions_table);
     dmDatasetClose(ds);
 
-    scale_histogram(r_hist);
-    scale_histogram(g_hist);
-    scale_histogram(b_hist);
+    scale_histogram(r_hist, scale);
+    scale_histogram(g_hist, scale);
+    scale_histogram(b_hist, scale);
 
     png_bytepp row_pointers;
     FILE* fp;

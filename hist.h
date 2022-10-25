@@ -7,6 +7,6 @@
 
 #include <string>
 
-void calc_histogram(const std::string& evt3_path, const std::string& output);
+void calc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale);
 
 #endif //MINIFITSTOPNG_HIST_H

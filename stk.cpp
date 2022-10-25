@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <sstream>
 #include <fstream>
+#include <cstring>
 #include <glob.h>
 
 std::vector<std::string> split(const std::string& s, char delim) {

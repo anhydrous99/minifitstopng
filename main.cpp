@@ -4,7 +4,7 @@
 #include <iostream>
 #include <cxxopts.hpp>
 #include <filesystem>
-#include <execution>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -36,12 +36,11 @@ int main(int argc, char **argv) {
 
     auto evt3_paths = stack_build(result["evt3"].as<std::string>());
 
-    std::for_each(evt3_paths.begin(), evt3_paths.end(),
-                  [&](const std::string &path) {
-                      fs::path p_path{path};
-                      fs::path png_path{output.string() + p_path.stem().string() + ".png"};
-                      calc_histogram(path, png_path.string(), scale);
-                  });
+    for (const auto& path: evt3_paths) {
+	    fs::path p_path{path};
+	    std::string png_path{output.string() + p_path.stem().string() + ".png"};
+	    calc_histogram(path, png_path, scale);
+    }
 
     return EXIT_SUCCESS;
 }

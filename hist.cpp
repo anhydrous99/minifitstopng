@@ -28,22 +28,6 @@ void scale_histogram(gsl_histogram2d* hist, const std::string& scale) {
 
 void calc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
 
-    // Initialize the histogram
-    gsl_histogram2d* r_hist = gsl_histogram2d_alloc(8192, 8192);
-    gsl_histogram2d* g_hist = gsl_histogram2d_alloc(8192, 8192);
-    gsl_histogram2d* b_hist = gsl_histogram2d_alloc(8192, 8192);
-
-    gsl_histogram2d_set_ranges_uniform(r_hist,
-                                       0.5, 8192.5,
-                                       0.5, 8192.5);
-    gsl_histogram2d_set_ranges_uniform(g_hist,
-                                       0.5, 8192.5,
-                                       0.5, 8192.5);
-    gsl_histogram2d_set_ranges_uniform(b_hist,
-                                       0.5, 8192.5,
-                                       0.5, 8192.5);
-
-
     // Open the EVT3 file.
     dmDataset* ds = dmDatasetOpen(evt3_path.c_str());
     dmBlock* regions_table = dmBlockOpen(ds, "EVENTS");
@@ -51,6 +35,25 @@ void calc_histogram(const std::string& evt3_path, const std::string& output, con
     auto* x_column = dmTableOpenColumn(regions_table, "x");
     auto* y_column = dmTableOpenColumn(regions_table, "y");
     auto* energy_column = dmTableOpenColumn(regions_table, "energy");
+
+    float tlmin, tlmax;
+    dmDescriptorGetRange_f(y_column, &tlmin, &tlmax);
+    long side_length = static_cast<long>(tlmax - tlmin);
+
+    // Initialize the histogram
+    gsl_histogram2d* r_hist = gsl_histogram2d_alloc(side_length, side_length);
+    gsl_histogram2d* g_hist = gsl_histogram2d_alloc(side_length, side_length);
+    gsl_histogram2d* b_hist = gsl_histogram2d_alloc(side_length, side_length);
+
+    gsl_histogram2d_set_ranges_uniform(r_hist,
+                                       tlmin, tlmax,
+                                       tlmin, tlmax);
+    gsl_histogram2d_set_ranges_uniform(g_hist,
+                                       tlmin, tlmax,
+                                       tlmin, tlmax);
+    gsl_histogram2d_set_ranges_uniform(b_hist,
+                                       tlmin, tlmax,
+                                       tlmin, tlmax);
 
     for (long row = 0; row < n_rows; row++) {
         double x = dmGetScalar_f(x_column);

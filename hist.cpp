@@ -21,12 +21,12 @@ void scale_histogram(gsl_histogram2d* hist, const std::string& scale) {
         const double s1 = a / max_val;
         const double s2 = 255. / log(a);
         auto *bin = hist->bin;
-        for (long i = 0; i < 8192 * 8192; i++)
+        for (long i = 0; i < hist->nx * hist->ny; i++)
             bin[i] = s2 * log1p(s1 * bin[i]);
     }
 }
 
-void create_png(const std::string& output, png_bytepp row_pointers) {
+void create_png(const std::string& output, png_bytepp row_pointers, long side_length) {
     // Create file output
     FILE* fp = fopen(output.c_str(), "wb");
     // Create structure for write
@@ -39,8 +39,8 @@ void create_png(const std::string& output, png_bytepp row_pointers) {
     png_set_IHDR(
             png,
             info,
-            8192,
-            8192,
+            side_length,
+            side_length,
             8,
             PNG_COLOR_TYPE_RGB,
             PNG_INTERLACE_NONE,
@@ -61,16 +61,16 @@ void create_png(const std::string& output, png_bytepp row_pointers) {
         fclose(fp);
 }
 
-png_bytepp malloc_png_ptr() {
-    auto row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * 8192);
-    for (long i = 0; i < 8192; i++) {
-        row_pointers[i] = (png_bytep) malloc(8192 * 3);
+png_bytepp malloc_png_ptr(long side_length) {
+    auto row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * side_length);
+    for (long i = 0; i < side_length; i++) {
+        row_pointers[i] = (png_bytep) malloc(side_length * 3);
     }
     return row_pointers;
 }
 
-void free_png_ptr(png_bytepp row_pointers) {
-    for (long i = 0; i < 8192; i++) {
+void free_png_ptr(png_bytepp row_pointers, long side_length) {
+    for (long i = 0; i < side_length; i++) {
         if (row_pointers[i])
             free(row_pointers[i]);
     }
@@ -90,6 +90,10 @@ void calc_acis_histogram(const std::string& evt3_path, const std::string& output
     float tlmin, tlmax;
     dmDescriptorGetRange_f(y_column, &tlmin, &tlmax);
     long side_length = static_cast<long>(tlmax - tlmin);
+    if (tlmax == 0) {
+        std::cerr << "Error tlmax is zero. Using .5-32768.5\n";
+        tlmin = .5; tlmax = 32768.5; side_length = 32768;
+    }
 
     // Initialize the histogram
     gsl_histogram2d* r_hist = gsl_histogram2d_alloc(side_length, side_length);
@@ -130,12 +134,12 @@ void calc_acis_histogram(const std::string& evt3_path, const std::string& output
     scale_histogram(b_hist, scale);
 
     // Initialize
-    auto row_pointers = malloc_png_ptr();
+    auto row_pointers = malloc_png_ptr(side_length);
 
     // Fill image
-    for (long w = 0; w < 8192; w++) {
+    for (long w = 0; w < side_length; w++) {
         png_bytep row = row_pointers[w];
-        for (long h = 0; h < 8192; h++) {
+        for (long h = 0; h < side_length; h++) {
             png_bytep ptr = &(row[h * 3]);
             ptr[0] = static_cast<png_byte>(gsl_histogram2d_get(r_hist, w, h));
             ptr[1] = static_cast<png_byte>(gsl_histogram2d_get(g_hist, w, h));
@@ -143,7 +147,7 @@ void calc_acis_histogram(const std::string& evt3_path, const std::string& output
         }
     }
 
-    create_png(output, row_pointers);
+    create_png(output, row_pointers, side_length);
 
     // Cleanup GSL
     gsl_histogram2d_free(r_hist);
@@ -151,7 +155,7 @@ void calc_acis_histogram(const std::string& evt3_path, const std::string& output
     gsl_histogram2d_free(b_hist);
 
     // Cleanup PNG
-    free_png_ptr(row_pointers);
+    free_png_ptr(row_pointers, side_length);
 }
 
 void calc_hrc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
@@ -191,25 +195,25 @@ void calc_hrc_histogram(const std::string& evt3_path, const std::string& output,
     scale_histogram(hist, scale);
 
     // Initialize
-    auto row_pointers = malloc_png_ptr();
+    auto row_pointers = malloc_png_ptr(side_length);
 
     // Fill image
-    for (long w = 0; w < 8192; w++) {
+    for (long w = 0; w < side_length; w++) {
         png_bytep row = row_pointers[w];
-        for (long h = 0; h < 8192; h++) {
+        for (long h = 0; h < side_length; h++) {
             png_bytep ptr = &(row[h * 3]);
             auto byte = static_cast<png_byte>(gsl_histogram2d_get(hist, w, h));
             ptr[0] = ptr[1] = ptr[2] = byte;
         }
     }
 
-    create_png(output, row_pointers);
+    create_png(output, row_pointers, side_length);
 
     // Cleanup GSL
     gsl_histogram2d_free(hist);
 
     // Cleanup PNG
-    free_png_ptr(row_pointers);
+    free_png_ptr(row_pointers, side_length);
 }
 
 void calc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {

@@ -4,6 +4,7 @@
 
 #include "stk.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
 #include <fstream>

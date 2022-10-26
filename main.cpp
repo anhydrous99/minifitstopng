@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
     options.add_options()
             ("e,evt3", "Event3 Files", cxxopts::value<std::string>())
             ("o,output", "Output directory", cxxopts::value<fs::path>())
-            ("s,scale", "Scaling (linear or log)", cxxopts::value<std::string>()->default_value("linear"))
+            ("s,scale", "Scaling (linear or log)", cxxopts::value<std::string>())
             ("h,help", "Print usage");
     auto result = options.parse(argc, argv);
 
@@ -38,7 +38,8 @@ int main(int argc, char **argv) {
 
     for (const auto& path: evt3_paths) {
 	    fs::path p_path{path};
-	    std::string png_path{output.string() + p_path.stem().string() + ".png"};
+	    std::string png_path{output.string() + "/" + p_path.stem().string() + ".png"};
+        std::cout << "Processing " << png_path << std::endl;
 	    calc_histogram(path, png_path, scale);
     }
 

@@ -26,8 +26,59 @@ void scale_histogram(gsl_histogram2d* hist, const std::string& scale) {
     }
 }
 
-void calc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
+void create_png(const std::string& output, png_bytepp row_pointers) {
+    // Create file output
+    FILE* fp = fopen(output.c_str(), "wb");
+    // Create structure for write
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    // Create info structure
+    png_infop info = png_create_info_struct(png);
+    // Initialize file output
+    png_init_io(png, fp);
+    // Set image properties
+    png_set_IHDR(
+            png,
+            info,
+            8192,
+            8192,
+            8,
+            PNG_COLOR_TYPE_RGB,
+            PNG_INTERLACE_NONE,
+            PNG_COMPRESSION_TYPE_DEFAULT,
+            PNG_FILTER_TYPE_DEFAULT
+    );
+    // Write png information
+    png_write_info(png, info);
 
+    // Write png data
+    if (setjmp(png_jmpbuf(png)))
+        std::cerr << "[write_png_file] Error during writing bytes\n";
+    png_write_image(png, row_pointers);
+    if (setjmp(png_jmpbuf(png)))
+        std::cerr << "[write_png_file] Error during writing bytes\n";
+    png_write_end(png, nullptr);
+    if (fp)
+        fclose(fp);
+}
+
+png_bytepp malloc_png_ptr() {
+    auto row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * 8192);
+    for (long i = 0; i < 8192; i++) {
+        row_pointers[i] = (png_bytep) malloc(8192 * 3);
+    }
+    return row_pointers;
+}
+
+void free_png_ptr(png_bytepp row_pointers) {
+    for (long i = 0; i < 8192; i++) {
+        if (row_pointers[i])
+            free(row_pointers[i]);
+    }
+    if (row_pointers)
+        free(row_pointers);
+}
+
+void calc_acis_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
     // Open the EVT3 file.
     dmDataset* ds = dmDatasetOpen(evt3_path.c_str());
     dmBlock* regions_table = dmBlockOpen(ds, "EVENTS");
@@ -70,7 +121,7 @@ void calc_histogram(const std::string& evt3_path, const std::string& output, con
         dmTableNextRow(regions_table);
     }
 
-    // Clean up block and dataset, we don't need it any more
+    // Clean up block and dataset, we don't need it anymore
     dmBlockClose(regions_table);
     dmDatasetClose(ds);
 
@@ -78,14 +129,8 @@ void calc_histogram(const std::string& evt3_path, const std::string& output, con
     scale_histogram(g_hist, scale);
     scale_histogram(b_hist, scale);
 
-    png_bytepp row_pointers;
-    FILE* fp;
-
     // Initialize
-    row_pointers = (png_bytepp) malloc(sizeof(png_bytep) * 8192);
-    for (long i = 0; i < 8192; i++) {
-        row_pointers[i] = (png_bytep) malloc(8192 * 3);
-    }
+    auto row_pointers = malloc_png_ptr();
 
     // Fill image
     for (long w = 0; w < 8192; w++) {
@@ -98,36 +143,7 @@ void calc_histogram(const std::string& evt3_path, const std::string& output, con
         }
     }
 
-    // Create file output
-    fp = fopen(output.c_str(), "wb");
-    // Create structure for write
-    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-    // Create info structure
-    png_infop info = png_create_info_struct(png);
-    // Initialize file output
-    png_init_io(png, fp);
-    // Set image properties
-    png_set_IHDR(
-            png,
-            info,
-            8192,
-            8192,
-            8,
-            PNG_COLOR_TYPE_RGB,
-            PNG_INTERLACE_NONE,
-            PNG_COMPRESSION_TYPE_DEFAULT,
-            PNG_FILTER_TYPE_DEFAULT
-            );
-    // Write png information
-    png_write_info(png, info);
-
-    // Write png data
-    if (setjmp(png_jmpbuf(png)))
-        std::cerr << "[write_png_file] Error during writing bytes\n";
-    png_write_image(png, row_pointers);
-    if (setjmp(png_jmpbuf(png)))
-        std::cerr << "[write_png_file] Error during writing bytes\n";
-    png_write_end(png, nullptr);
+    create_png(output, row_pointers);
 
     // Cleanup GSL
     gsl_histogram2d_free(r_hist);
@@ -135,12 +151,70 @@ void calc_histogram(const std::string& evt3_path, const std::string& output, con
     gsl_histogram2d_free(b_hist);
 
     // Cleanup PNG
-    if (fp)
-        fclose(fp);
-    for (long i = 0; i < 8192; i++) {
-        if (row_pointers[i])
-            free(row_pointers[i]);
+    free_png_ptr(row_pointers);
+}
+
+void calc_hrc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
+    // Open the EVT3 file.
+    dmDataset* ds = dmDatasetOpen(evt3_path.c_str());
+    dmBlock* regions_table = dmBlockOpen(ds, "EVENTS");
+    long n_rows = dmTableGetNoRows(regions_table);
+    auto* x_column = dmTableOpenColumn(regions_table, "x");
+    auto* y_column = dmTableOpenColumn(regions_table, "y");
+
+    float tlmin = 0, tlmax = 0;
+    dmDescriptorGetRange_f(y_column, &tlmin, &tlmax);
+    long side_length = static_cast<long>(tlmax - tlmin);
+    if (tlmax == 0) {
+        std::cerr << "Error tlmax is zero. Using .5-32768.5\n";
+        tlmin = .5; tlmax = 32768.5; side_length = 32768;
     }
-    if (row_pointers)
-        free(row_pointers);
+
+    gsl_histogram2d* hist = gsl_histogram2d_alloc(side_length, side_length);
+    gsl_histogram2d_set_ranges_uniform(hist,
+                                       tlmin, tlmax,
+                                       tlmin, tlmax);
+
+    for (long row = 0; row < n_rows; row++) {
+        double x = dmGetScalar_f(x_column);
+        double y = dmGetScalar_f(y_column);
+
+        gsl_histogram2d_accumulate(hist, x, y, 1);
+
+        dmTableNextRow(regions_table);
+    }
+
+    // Clean up block and dataset, we don't need it anymore
+    dmBlockClose(regions_table);
+    dmDatasetClose(ds);
+
+    scale_histogram(hist, scale);
+
+    // Initialize
+    auto row_pointers = malloc_png_ptr();
+
+    // Fill image
+    for (long w = 0; w < 8192; w++) {
+        png_bytep row = row_pointers[w];
+        for (long h = 0; h < 8192; h++) {
+            png_bytep ptr = &(row[h * 3]);
+            auto byte = static_cast<png_byte>(gsl_histogram2d_get(hist, w, h));
+            ptr[0] = ptr[1] = ptr[2] = byte;
+        }
+    }
+
+    create_png(output, row_pointers);
+
+    // Cleanup GSL
+    gsl_histogram2d_free(hist);
+
+    // Cleanup PNG
+    free_png_ptr(row_pointers);
+}
+
+void calc_histogram(const std::string& evt3_path, const std::string& output, const std::string& scale) {
+    if (evt3_path.find("acis") != std::string::npos)
+        calc_acis_histogram(evt3_path, output, scale);
+    else
+        calc_hrc_histogram(evt3_path, output, scale);
 }
